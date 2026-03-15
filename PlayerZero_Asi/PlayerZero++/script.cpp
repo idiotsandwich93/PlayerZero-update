@@ -1452,7 +1452,9 @@ void GunningIt(Ped peddy, int gun)
 	}
 
 	for (int i = 0; i < sWeapList.size(); i++)
-		WEAPON::GIVE_WEAPON_TO_PED(peddy, MyHashKey(sWeapList[i]), 9999, false, true);
+		WEAPON::GIVE_WEAPON_TO_PED(peddy, MyHashKey(sWeapList[i]), 9999, false, false); // holstered — weapon is owned but never drawn on spawn
+	// Force unarmed stance so the ped does not visually walk around with gun out
+	WEAPON::SET_CURRENT_PED_WEAPON(peddy, GAMEPLAY::GET_HASH_KEY("WEAPON_UNARMED"), true);
 }
 void GetInVehicle(Ped peddy, Vehicle vic, int seat)
 {
@@ -3038,7 +3040,10 @@ Ped PlayerPedGen(Vector4 pos, PlayerBrain* brain, bool partyPed)
 			if (!brain->IsAnimal)
 			{
 				OnlineFaces(ThisPed, &brain->PFMySetting);
-				GunningIt(ThisPed, brain->GunSelect);
+				// Friendly / civilian peds are unarmed civilians — never give them a weapon loadout.
+				// Hostile / criminal peds get a loadout via GunningIt (weapons holstered until combat).
+				if (!brain->Friendly && !brain->Follower)
+					GunningIt(ThisPed, brain->GunSelect);
 			}
 
 			if (brain->MyIdentity == "")
@@ -3096,6 +3101,42 @@ Ped PlayerPedGen(Vector4 pos, PlayerBrain* brain, bool partyPed)
 
 						aggrTier = GetZoneAggressionTier(zoneName);
 
+						// -------------------------------------------------------
+						// NEIGHBORHOOD BALANCE: re-roll Friendly based on zone economy.
+						//   Wealthy  (3) = upscale areas — 85 % friendly civilians
+						//   Middle   (2) = mixed areas   — keep Aggression-based roll
+						//   Poor     (1) = high-crime    — 25 % friendly, rest hostile
+						// This overrides the global Aggression-based roll so that
+						// Vinewood feels calm and Davis/Strawberry feel dangerous.
+						// -------------------------------------------------------
+						bool wasHostile = !brain->Friendly;
+						if (brain->ZoneEconomy == 3)
+							brain->Friendly = (RandomInt(1, 100) <= 85);
+						else if (brain->ZoneEconomy == 1)
+							brain->Friendly = (RandomInt(1, 100) <= 25);
+						// ZoneEconomy == 2: leave Friendly unchanged (Aggression roll stands)
+
+						// If the economy re-roll changed the alignment, fix relationship group.
+						if (wasHostile && brain->Friendly)
+						{
+							// Was hostile → now civilian: strip any weapon loadout given by GunningIt.
+							WEAPON::REMOVE_ALL_PED_WEAPONS(ThisPed, true);
+							brain->ArmedWeaponHash = 0;
+							brain->IsCriminal      = false;
+							brain->IsDealer        = false;
+							brain->BlipColour = 0;
+							UI::SET_BLIP_COLOUR(brain->ThisBlip, 0);
+							RelGroupMember(ThisPed, Gp_Friend);
+						}
+						else if (!wasHostile && !brain->Friendly)
+						{
+							// Was friendly → now hostile: give them a weapon loadout (holstered).
+							GunningIt(ThisPed, brain->GunSelect);
+							brain->BlipColour = 1;
+							UI::SET_BLIP_COLOUR(brain->ThisBlip, 1);
+							FightPlayer(brain);
+						}
+
 						const LSRGangProfile* gp = nullptr;
 						if (!brain->GangID.empty())
 						{
@@ -3120,14 +3161,30 @@ Ped PlayerPedGen(Vector4 pos, PlayerBrain* brain, bool partyPed)
 						else if (h >= 18 && h < 22) brain->SchedulePhase = 2;
 						else                         brain->SchedulePhase = 3;
 
-						if (RandomInt(1, 100) <= crimChance)
+						// Friendly / civilian peds never commit crimes and are never armed.
+						// Hostile peds roll for criminal status and get a holstered weapon.
+						if (!brain->Friendly)
 						{
-							brain->IsCriminal = true;
-							if (RandomInt(1, 100) <= dealerChance)
-								brain->IsDealer = true;
+							if (RandomInt(1, 100) <= crimChance)
+							{
+								brain->IsCriminal = true;
+								if (RandomInt(1, 100) <= dealerChance)
+									brain->IsDealer = true;
 
-							// Arm the criminal — weapon given holstered (no draw, no wanted level).
-							ArmCriminalPed(brain, gp);
+								// Arm the criminal — weapon given holstered (no draw, no wanted level).
+								ArmCriminalPed(brain, gp);
+							}
+						}
+						else
+						{
+							// Civilian: clear any crime flags, configure flee-first behaviour.
+							brain->IsCriminal = false;
+							brain->IsDealer   = false;
+							PED::SET_PED_FLEE_ATTRIBUTES(ThisPed, 1, true); // flee from nearby weapons
+							PED::SET_PED_FLEE_ATTRIBUTES(ThisPed, 2, true); // flee when injured
+							PED::SET_PED_COMBAT_ATTRIBUTES(ThisPed, 5,  true); // can flee
+							PED::SET_PED_COMBAT_ATTRIBUTES(ThisPed, 17, true); // flee from fire
+							PED::SET_PED_COMBAT_ATTRIBUTES(ThisPed, 52, true); // disengage if out of LoS
 						}
 					}
 					else
@@ -3138,12 +3195,31 @@ Ped PlayerPedGen(Vector4 pos, PlayerBrain* brain, bool partyPed)
 							spawnPos.x, spawnPos.y, spawnPos.z));
 						aggrTier = GetZoneAggressionTier(zoneName);
 
-						if (RandomInt(1, 100) <= crimChance)
+						// In standalone mode use aggression tier to bias the friendly roll:
+						// High-crime zone (tier 3) = at most 35 % friendly.
+						// Low-crime zone  (tier 1) = at least 75 % friendly.
+						if      (aggrTier == 1) brain->Friendly = (RandomInt(1, 100) <= 75);
+						else if (aggrTier == 3) brain->Friendly = (RandomInt(1, 100) <= 35);
+
+						if (!brain->Friendly)
 						{
-							brain->IsCriminal = true;
-							if (RandomInt(1, 100) <= dealerChance)
-								brain->IsDealer = true;
-							ArmCriminalPed(brain, nullptr);
+							if (RandomInt(1, 100) <= crimChance)
+							{
+								brain->IsCriminal = true;
+								if (RandomInt(1, 100) <= dealerChance)
+									brain->IsDealer = true;
+								ArmCriminalPed(brain, nullptr);
+							}
+						}
+						else
+						{
+							brain->IsCriminal = false;
+							brain->IsDealer   = false;
+							PED::SET_PED_FLEE_ATTRIBUTES(ThisPed, 1, true);
+							PED::SET_PED_FLEE_ATTRIBUTES(ThisPed, 2, true);
+							PED::SET_PED_COMBAT_ATTRIBUTES(ThisPed, 5,  true);
+							PED::SET_PED_COMBAT_ATTRIBUTES(ThisPed, 17, true);
+							PED::SET_PED_COMBAT_ATTRIBUTES(ThisPed, 52, true);
 						}
 					}
 
