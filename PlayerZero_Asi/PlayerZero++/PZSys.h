@@ -331,13 +331,22 @@ namespace PZClass
 		int RobPhase;              // 0=idle, 1=walking to store, 2=robbing (weapon drawn), 3=fleeing
 
 		// Interior entry simulation
-		int  InteriorEntryID;      // -1 = not routing to an interior; N = interior LocalID
-		bool InsideInterior;       // ped is currently standing inside a business
+		int  InteriorEntryID;      // -1 = not routing; N = interior LocalID; -2 = browsing phase
+		bool InsideInterior;       // ped has entered the business and is browsing
+		bool ShopBrowsing;         // ped is playing the purchase/browsing scenario inside
 
 		// Traffic stop simulation
-		bool IsPulledOver;         // ped pulled over â€” vehicle parked, waiting
+		bool IsPulledOver;         // ped pulled over — vehicle parked, waiting
 		int  PulloverTimer;        // game time when pull-over wait ends
 		int  TrafficViolTimer;     // next game time to roll a traffic violation check
+
+		// Police reaction
+		int  CopReactionTimer;     // next game time to check for nearby police
+
+		// Stuck vehicle recovery
+		int   StuckCheckTimer;     // next game time for stuck position check
+		float LastStuckX;          // vehicle X at last stuck check
+		float LastStuckY;          // vehicle Y at last stuck check
 
 		std::string MyName;
 		std::string MyIdentity;
@@ -345,7 +354,7 @@ namespace PZClass
 
 	public:
 		PlayerBrain(std::string name, std::string id, ClothBank pedCloth, int timeOn, int level, bool inContact, bool isMobileCont, int nationality, int gunSelect, int preVehicle, std::string faveVehicle, int faveRadio)
-			: ThisPed(NULL), ThisEnemy(NULL), ThisVeh(NULL), Oppressor(NULL), XmasTree(NULL), ThisBlip(NULL), MoneyDrops(MoneyBags()), DirBlip(true), DeathSequence(0), DeathTime(0), Kills(0), Killed(0), TimeOn(timeOn), FindPlayer(0), ShopTimer(0), ScenarioTimer(0), PlaneLand(-1), OffRadar(0), FlightPath(0), Nationality(nationality), IsAnimal(false), EWO(false), YoDeeeed(false), OffRadarBool(false), Bounty(false), InCombat(false), SessionJumper(false), DropMoneyBags(false), Horny(false), Driver(false), Passenger(false), WanBeFriends(false), ApprochPlayer(true), IsPlane(false), IsHeli(false), IsInContacts(inContact), IsMobileCont(isMobileCont), SessionGreating(true), PiggyBackin(false), TimeToGo(false), SessionPilot(false), GrabVeh(false), IsSpecialPed(false), PlayerInVeh(false), HeadTag(0), BlipColour(0), Level(level), PrefredVehicle(preVehicle), FaveVehicle(faveVehicle), GunSelect(gunSelect), FaveRadio(faveRadio), EnemyPos(1.0f), BusDriver(false), RentaCop(false), TheHacker(false), AirTranspport(false), Friendly(true), Follower(false), IsCriminal(false), IsDealer(false), CrimeTimer(0), GangID(""), ZoneEconomy(0), IsWanted(false), WantedTimer(0), SchedulePhase(0), AggressionTier(0), ArmedWeaponHash(0), RobPhase(0), InteriorEntryID(-1), InsideInterior(false), IsPulledOver(false), PulloverTimer(0), TrafficViolTimer(0), AtTheParty(false), StayInVeh(false), RadioHeads(true), HackReaction(false), MyName(name), MyIdentity(id), PFMySetting(pedCloth) {}
+			: ThisPed(NULL), ThisEnemy(NULL), ThisVeh(NULL), Oppressor(NULL), XmasTree(NULL), ThisBlip(NULL), MoneyDrops(MoneyBags()), DirBlip(true), DeathSequence(0), DeathTime(0), Kills(0), Killed(0), TimeOn(timeOn), FindPlayer(0), ShopTimer(0), ScenarioTimer(0), PlaneLand(-1), OffRadar(0), FlightPath(0), Nationality(nationality), IsAnimal(false), EWO(false), YoDeeeed(false), OffRadarBool(false), Bounty(false), InCombat(false), SessionJumper(false), DropMoneyBags(false), Horny(false), Driver(false), Passenger(false), WanBeFriends(false), ApprochPlayer(true), IsPlane(false), IsHeli(false), IsInContacts(inContact), IsMobileCont(isMobileCont), SessionGreating(true), PiggyBackin(false), TimeToGo(false), SessionPilot(false), GrabVeh(false), IsSpecialPed(false), PlayerInVeh(false), HeadTag(0), BlipColour(0), Level(level), PrefredVehicle(preVehicle), FaveVehicle(faveVehicle), GunSelect(gunSelect), FaveRadio(faveRadio), EnemyPos(1.0f), BusDriver(false), RentaCop(false), TheHacker(false), AirTranspport(false), Friendly(true), Follower(false), IsCriminal(false), IsDealer(false), CrimeTimer(0), GangID(""), ZoneEconomy(0), IsWanted(false), WantedTimer(0), SchedulePhase(0), AggressionTier(0), ArmedWeaponHash(0), RobPhase(0), InteriorEntryID(-1), InsideInterior(false), ShopBrowsing(false), IsPulledOver(false), PulloverTimer(0), TrafficViolTimer(0), CopReactionTimer(0), StuckCheckTimer(0), LastStuckX(0.0f), LastStuckY(0.0f), AtTheParty(false), StayInVeh(false), RadioHeads(true), HackReaction(false), MyName(name), MyIdentity(id), PFMySetting(pedCloth) {}
 	};
 	class PhoneContact
 	{

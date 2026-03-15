@@ -5261,35 +5261,58 @@ void ProcessPZ(PlayerBrain* brain)
 									brain->ShopTimer     = 0;
 									brain->ScenarioTimer = GameTime + RandomInt(8000, 14000);
 								}
-								else if (brain->InteriorEntryID != -1 && !brain->InsideInterior)
-								{
-									// Interior phase 1: ped arrived at the business entrance.
-									// Holster weapon if interior is weapon-restricted, then stand still.
-									Ped peddy2 = brain->ThisPed;
-									const LSRInterior* intr = LSRData::GetInterior(brain->InteriorEntryID);
-									if (intr && intr->isWeaponRestricted && brain->ArmedWeaponHash != 0)
-									    WEAPON::SET_CURRENT_PED_WEAPON(peddy2,
-									        GAMEPLAY::GET_HASH_KEY("WEAPON_UNARMED"), true);
-									AI::TASK_STAND_STILL(peddy2, 90000);
-									PED::SET_BLOCKING_OF_NON_TEMPORARY_EVENTS(peddy2, true);
-									brain->InsideInterior = true;
-									brain->ShopTimer      = GameTime + RandomInt(30000, 90000);
-								}
-								else if (brain->InsideInterior)
-								{
-									// Interior phase 2: visit complete -- exit and walk away.
-									Ped peddy2 = brain->ThisPed;
-									brain->InsideInterior  = false;
-									brain->InteriorEntryID = -1;
-									brain->ShopTimer       = 0;
-									PED::SET_BLOCKING_OF_NON_TEMPORARY_EVENTS(peddy2, false);
-									Vector3 ePos = ENTITY::GET_ENTITY_COORDS(peddy2, true);
-									float eAngle = (float)(rand() % 360) * 0.0174533f;
-									Vector3 eExit; eExit.x = ePos.x + cosf(eAngle) * 15.0f;
-									               eExit.y = ePos.y + sinf(eAngle) * 15.0f; eExit.z = ePos.z;
-									WalkHere(peddy2, eExit);
-									brain->FindPlayer = GameTime + RandomInt(20000, 40000);
-								}
+										else if (brain->InteriorEntryID != -1 && !brain->InsideInterior && !brain->ShopBrowsing)
+										{
+											// Interior phase 1: ped arrived at the entrance ΓÇö holster if restricted,
+											// then walk 5 m inward to simulate entering the store.
+											Ped peddy2 = brain->ThisPed;
+											const LSRInterior* intr = LSRData::GetInterior(brain->InteriorEntryID);
+											if (intr && intr->isWeaponRestricted && brain->ArmedWeaponHash != 0)
+											    WEAPON::SET_CURRENT_PED_WEAPON(peddy2,
+											        GAMEPLAY::GET_HASH_KEY("WEAPON_UNARMED"), true);
+											// Walk a few metres inside from the entrance
+											float inHdg = ENTITY::GET_ENTITY_HEADING(peddy2) * 0.0174533f;
+											Vector3 inPos = ENTITY::GET_ENTITY_COORDS(peddy2, true);
+											inPos.x += cosf(inHdg) * 5.0f;
+											inPos.y += sinf(inHdg) * 5.0f;
+											WalkHere(peddy2, inPos);
+											PED::SET_BLOCKING_OF_NON_TEMPORARY_EVENTS(peddy2, true);
+											brain->InsideInterior = true;
+											brain->ShopTimer      = GameTime + RandomInt(8000, 14000);  // walk-in time
+										}
+										else if (brain->InsideInterior && !brain->ShopBrowsing)
+										{
+											// Interior phase 2: inside ΓÇö play a purchase/browsing scenario.
+											Ped peddy2 = brain->ThisPed;
+											static const char* shopAnims[] = {
+											    "WORLD_HUMAN_BROWSING_UPRIGHT",
+											    "WORLD_HUMAN_STAND_MOBILE",
+											    "WORLD_HUMAN_CLIPBOARD"
+											};
+											int sIdx = RandomInt(0, 2);
+											AI::CLEAR_PED_TASKS(peddy2);
+											AI::TASK_START_SCENARIO_IN_PLACE(peddy2, (LPSTR)shopAnims[sIdx], 0, true);
+											PED::SET_PED_KEEP_TASK(peddy2, true);
+											brain->ShopBrowsing = true;
+											brain->ShopTimer    = GameTime + RandomInt(25000, 60000); // browse time
+										}
+										else if (brain->ShopBrowsing)
+										{
+											// Interior phase 3: done browsing ΓÇö exit the shop.
+											Ped peddy2 = brain->ThisPed;
+											AI::CLEAR_PED_TASKS(peddy2);
+											brain->InsideInterior  = false;
+											brain->ShopBrowsing    = false;
+											brain->InteriorEntryID = -1;
+											brain->ShopTimer       = 0;
+											PED::SET_BLOCKING_OF_NON_TEMPORARY_EVENTS(peddy2, false);
+											Vector3 ePos = ENTITY::GET_ENTITY_COORDS(peddy2, true);
+											float eAngle = (float)(rand() % 360) * 0.0174533f;
+											Vector3 eExit; eExit.x = ePos.x + cosf(eAngle) * 15.0f;
+											               eExit.y = ePos.y + sinf(eAngle) * 15.0f; eExit.z = ePos.z;
+											WalkHere(peddy2, eExit);
+											brain->FindPlayer = GameTime + RandomInt(20000, 40000);
+										}
 								else
 								{
 									// Normal shop visit complete -- pick a new action
@@ -5381,6 +5404,27 @@ void ProcessPZ(PlayerBrain* brain)
 						{
 							ENTITY::SET_ENTITY_ALPHA(brain->ThisVeh, 255, false);
 							brain->Driver = false;
+						}
+						// --- STUCK VEHICLE RECOVERY (checked every 5 s) ---
+						// If the vehicle has barely moved and its speed is near zero,
+						// the ped is stuck (wedged against a post, wall, etc). Re-issue a drive task.
+						if (ENTITY::DOES_ENTITY_EXIST(brain->ThisVeh) && brain->StuckCheckTimer < GameTime)
+						{
+							brain->StuckCheckTimer = GameTime + 5000;
+							float curX = ENTITY::GET_ENTITY_COORDS(brain->ThisVeh, true).x;
+							float curY = ENTITY::GET_ENTITY_COORDS(brain->ThisVeh, true).y;
+							float moved = sqrtf((curX - brain->LastStuckX) * (curX - brain->LastStuckX) +
+							                    (curY - brain->LastStuckY) * (curY - brain->LastStuckY));
+							if (moved < 3.0f && ENTITY::GET_ENTITY_SPEED(brain->ThisVeh) < 0.5f &&
+							    !brain->IsPulledOver && brain->ThisEnemy == NULL)
+							{
+								// Unstick: clear tasks and re-route to a hotspot
+								AI::CLEAR_PED_TASKS(PlayZero);
+								DriveToHotspot(PlayZero, brain->ThisVeh);
+								brain->FindPlayer = GameTime + RandomInt(20000, 40000);
+							}
+							brain->LastStuckX = curX;
+							brain->LastStuckY = curY;
 						}
 						else if (brain->FindPlayer < GameTime)
 						{
@@ -5486,6 +5530,68 @@ void ProcessPZ(PlayerBrain* brain)
 							}
 						}
 
+
+						// --- POLICE INTERACTION (checked every 10 s) ---
+						// Friendly peds surrender; hostile peds resist/attack depending on aggression tier.
+						if (!brain->Follower && brain->CopReactionTimer < GameTime)
+						{
+							brain->CopReactionTimer = GameTime + 10000;
+							if ((bool)AI::IS_PED_BEING_ARRESTED(PlayZero))
+							{
+								if (brain->Friendly)
+								{
+									// Civilian surrender: raise hands, allow arrest
+									AI::CLEAR_PED_TASKS(PlayZero);
+									AI::TASK_HANDS_UP(PlayZero, 15000, NULL, -1, false);
+									PED::SET_PED_KEEP_TASK(PlayZero, true);
+									PED::SET_BLOCKING_OF_NON_TEMPORARY_EVENTS(PlayZero, true);
+									brain->FindPlayer = GameTime + 16000;
+								}
+								else
+								{
+									// Criminal: fight back or sprint-flee based on zone aggression tier
+									AI::CLEAR_PED_TASKS(PlayZero);
+									if (brain->AggressionTier >= 3)
+									{
+										// High-crime zone: attack the arresting officer
+										Ped srcCop = PED::_GET_PED_KILLER(PlayZero);
+										Ped fightTarget = (srcCop != NULL && (bool)ENTITY::DOES_ENTITY_EXIST(srcCop)) ? srcCop : ThePlayer;
+										GreefWar(PlayZero, fightTarget);
+										brain->ThisEnemy = fightTarget;
+									}
+									else
+									{
+										// Lower zone: flee
+										AI::TASK_SMART_FLEE_PED(PlayZero, ThePlayer, 300.0f, -1, false, false);
+										PED::SET_PED_KEEP_TASK(PlayZero, true);
+										brain->ThisEnemy = NULL;
+									}
+									brain->FindPlayer = GameTime + RandomInt(20000, 35000);
+								}
+							}
+						}
+
+						// --- FRIENDLY PEDS FLEE NEARBY GUNFIGHTS ---
+						// When any hostile PZ ped within 60 m is actively firing, civilians scatter.
+						if (brain->Friendly && !brain->Follower && brain->FindPlayer < GameTime + 10000)
+						{
+							for (int fi = 0; fi < (int)PedList.size(); fi++)
+							{
+								PlayerBrain& threat = PedList[fi];
+								if (!threat.Friendly && !threat.YoDeeeed &&
+								    threat.ThisPed != NULL &&
+								    DistanceTo(threat.ThisPed, PedPos) < 60.0f &&
+								    (bool)PED::IS_PED_SHOOTING(threat.ThisPed))
+								{
+									AI::CLEAR_PED_TASKS(PlayZero);
+									AI::TASK_SMART_FLEE_PED(PlayZero, threat.ThisPed, 200.0f, -1, false, false);
+									PED::SET_PED_KEEP_TASK(PlayZero, true);
+									brain->ThisEnemy = NULL;
+									brain->FindPlayer = GameTime + RandomInt(25000, 45000);
+									break;
+								}
+							}
+						}
 						if (brain->FindPlayer < GameTime)
 						{
 							brain->FindPlayer = GameTime + 1000;
