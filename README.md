@@ -54,6 +54,28 @@ Any of these will work.
 ==*==*==*==*==*==*==*==*==*==*==*==*==*==*==*==*==*==*==*==*==*==
 <b>Change Log</b>
 ==*==*==*==*==*==*==*==
+<u>Version 1.27 (PlayerZero++)</u>
+<ul>
+    <li>Added drug buy system: civilian PZ peds in poor/criminal areas will now walk up to gang member dealers and purchase drugs from them.</li>
+    <li>Buyers first look for PZ peds with IsDealer=true within 30m, then fall back to ambient LSR gang peds by relationship group hash.</li>
+    <li>Drug type pulled from LSRData::GetRandomIntoxicant() — reads Itoxicants.xml and Itoxicants+_LSRPDRUGS.xml (17+ substances: Marijuana, Cocaine, Crack, Heroin, Meth, SPANK, LSD, etc.).</li>
+    <li>Buy chance scales by zone: 12% in poor areas, 10% for high-aggression peds, 4% in middle-class areas. 3-7 minute cooldown between purchases.</li>
+    <li>LSRData now fully parses Itoxicants.xml and loads drug names at startup via LoadIntoxicants().</li>
+    <li>Fixed LoadInteriors() not being called in LSRData::Init() — interior data now loads correctly at startup.</li>
+</ul>
+
+<u>Version 1.26 (PlayerZero++)</u>
+<ul>
+    <li>Zone-based civilian/hostile spawn ratios: wealthy areas (Vinewood, Rockford Hills) spawn ~85% friendly civilians; poor areas (Davis, Strawberry) spawn ~75% hostile/criminal peds. Uses LSR zone economy data (Rich/Middle/Poor).</li>
+    <li>Friendly peds are now fully unarmed — GunningIt() skipped entirely for friendlies. All peds spawn with weapons holstered (not drawn).</li>
+    <li>Friendly peds flee danger: set to flee from nearby weapons, gunfire, and combat. Will TASK_SMART_FLEE_PED when a hostile ped within 60m starts shooting.</li>
+    <li>Police interactions: friendly peds surrender (TASK_HANDS_UP) when player is being arrested; hostile peds (AggressionTier >= 3) attack officers or flee.</li>
+    <li>Improved spawn positioning: GET_SAFE_COORD_FOR_PED now uses flag 16 (sidewalk preference) to prevent peds spawning in the middle of roads.</li>
+    <li>Stuck vehicle recovery interval increased from 5s to 30s — prevents false positives for law-abiding drivers stopped at red lights.</li>
+    <li>Interior vendor purchase: peds entering shops now walk up to ambient clerk peds (GET_PED_NEARBY_PEDS within 9m) to simulate purchasing. Falls back to browse scenario if no clerk found.</li>
+    <li>Traffic law compliance: friendly/civilian drivers use law-abiding drive style (1074528293, 10-18 m/s); hostile/gang drivers use reckless style (786603, 22-40 m/s). Based on LSR Crimes.xml traffic violation definitions.</li>
+</ul>
+
 <u>Version 1.91</u>
 <ul>
     <li>Fixed no reaction to player aggression when on foot near player.</li>

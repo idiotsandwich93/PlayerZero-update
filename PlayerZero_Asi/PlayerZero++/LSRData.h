@@ -31,6 +31,10 @@ struct LSRInterior {
     bool        isWeaponRestricted = false;
 };
 
+struct LSRIntoxicant {
+    std::string name; // e.g. "Marijuana", "Cocaine", "SPANK"
+};
+
 struct LSRLocation {
     std::string typeName; // "GangDen", "Restaurant", "Bar", etc.
     float x         = 0.0f;
@@ -103,18 +107,24 @@ public:
     // Count of loaded locations for a type (0 if LSR not available).
     static int LocationCount(const std::string& typeName);
 
+    // Random drug/intoxicant name from Itoxicants.xml, e.g. "Marijuana", "Cocaine".
+    // Returns "something" if LSR not available or file not found.
+    static const std::string& GetRandomIntoxicant();
+
 private:
     static std::unordered_map<std::string, std::string>                ZoneGangMap;
     static std::unordered_map<std::string, std::string>                ZoneEconomyMap;
     static std::unordered_map<std::string, LSRGangProfile>             GangProfiles;
     static std::unordered_map<std::string, std::vector<LSRLocation>>   Locations;
     static std::unordered_map<int, LSRInterior>                        Interiors;
+    static std::vector<std::string>                                    IntoxicantNames;
 
     static void LoadTerritories(const std::string& path);
     static void LoadZones(const std::string& path);
     static void LoadGangs(const std::string& path);
     static void LoadLocations(const std::string& path);
     static void LoadInteriors(const std::string& path);
+    static void LoadIntoxicants(const std::string& path);
 
     // Reads the file at path, accumulates text between <blockTag> and </blockTag>,
     // and fires callback(block) for each complete block found.

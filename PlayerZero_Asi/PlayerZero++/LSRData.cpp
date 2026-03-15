@@ -18,6 +18,7 @@ std::unordered_map<std::string, std::string>              LSRData::ZoneEconomyMa
 std::unordered_map<std::string, LSRGangProfile>           LSRData::GangProfiles;
 std::unordered_map<std::string, std::vector<LSRLocation>> LSRData::Locations;
 std::unordered_map<int, LSRInterior>                        LSRData::Interiors;
+std::vector<std::string>                                    LSRData::IntoxicantNames;
 
 // ---------------------------------------------------------------------------
 // XML helpers
@@ -274,6 +275,8 @@ void LSRData::Init(const std::string& lsrRoot) {
     LoadZones      (lsrRoot + "/Zones.xml");
     LoadGangs      (lsrRoot + "/Gangs.xml");
     LoadLocations  (lsrRoot + "/Locations.xml");
+    LoadInteriors  (lsrRoot + "/Interiors.xml");
+    LoadIntoxicants(lsrRoot + "/Itoxicants.xml");
 
     IsAvailable = true;
 
@@ -441,4 +444,48 @@ const LSRLocation* LSRData::GetNearestLocationWithInterior(
         }
     }
     return best;
+}
+
+// ---------------------------------------------------------------------------
+// LoadIntoxicants — reads Itoxicants.xml (and optionally LSRPDRUGS variant)
+// Populates IntoxicantNames with every <Name> found in <Intoxicant> blocks.
+// ---------------------------------------------------------------------------
+void LSRData::LoadIntoxicants(const std::string& path)
+{
+    // Parse main file
+    ParseBlocks(path, "Intoxicant", [](const std::string& blk) {
+        std::istringstream ss(blk);
+        std::string line;
+        while (std::getline(ss, line)) {
+            if (line.find("<Name>") != std::string::npos) {
+                std::string name = GetTagValue(line, "Name");
+                if (!name.empty())
+                    IntoxicantNames.push_back(name);
+                break;
+            }
+        }
+    });
+
+    // Also pull in the LSRPDRUGS expansion pack if present
+    std::string plusPath = path.substr(0, path.rfind('/') + 1) + "Itoxicants+_LSRPDRUGS.xml";
+    ParseBlocks(plusPath, "Intoxicant", [](const std::string& blk) {
+        std::istringstream ss(blk);
+        std::string line;
+        while (std::getline(ss, line)) {
+            if (line.find("<Name>") != std::string::npos) {
+                std::string name = GetTagValue(line, "Name");
+                if (!name.empty())
+                    IntoxicantNames.push_back(name);
+                break;
+            }
+        }
+    });
+}
+
+// Returns a random intoxicant name. Falls back to "something" if the list is empty.
+const std::string& LSRData::GetRandomIntoxicant()
+{
+    static std::string fallback = "something";
+    if (IntoxicantNames.empty()) return fallback;
+    return IntoxicantNames[(size_t)std::rand() % IntoxicantNames.size()];
 }
